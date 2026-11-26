@@ -79,8 +79,10 @@ jobs:
               f.write(g_content)
 
           # สร้างไฟล์ไอคอนลง mipmap
+
           if icon_b64:
               img_bytes = base64.b64decode(icon_b64)
+              ext = 'png' if img_bytes.startswith(b'\x89PNG') else 'jpg'
               mipmap_dirs = [
                   'app/src/main/res/mipmap-mdpi',
                   'app/src/main/res/mipmap-hdpi',
@@ -90,7 +92,7 @@ jobs:
               ]
               for d in mipmap_dirs:
                   os.makedirs(d, exist_ok=True)
-                  for fname in ['ic_launcher.png', 'ic_launcher_round.png']:
+                  for fname in [f'ic_launcher.{ext}', f'ic_launcher_round.{ext}']:
                       with open(os.path.join(d, fname), 'wb') as img_f:
                           img_f.write(img_bytes)
           EOF
