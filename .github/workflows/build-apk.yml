@@ -1,4 +1,4 @@
-name: Build Android APK from URL
+name: Build Android APK & AAB from URL
 
 on:
   workflow_dispatch:
@@ -96,10 +96,10 @@ jobs:
                           img_f.write(img_bytes)
           EOF
 
-      - name: 5. Build Release APK
-        run: gradle assembleRelease
+      - name: 5. Build Release APK and AAB
+        run: gradle assembleRelease bundleRelease
 
-      - name: 6. Sign APK (ใช้ Keystore ถาวรจาก GitHub Secrets)
+      - name: 6. Sign APK & AAB (ใช้ Keystore ถาวรจาก GitHub Secrets)
         env:
           BUILD_ID: ${{ inputs.build_id }}
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
@@ -109,6 +109,7 @@ jobs:
         run: |
           echo "$KEYSTORE_BASE64" | base64 --decode > release.jks
 
+          # 1) จัดเรียงและเซ็นไฟล์ APK ด้วย apksigner
           APKSIGNER=$(find $ANDROID_HOME/build-tools -name "apksigner" | sort -V | tail -n 1)
           ZIPALIGN=$(find $ANDROID_HOME/build-tools -name "zipalign" | sort -V | tail -n 1)
 
@@ -123,9 +124,18 @@ jobs:
             --key-pass "pass:$KEY_PASSWORD" \
             --out "$FINAL_APK" "$ALIGNED_APK"
 
+          # 2) เซ็นไฟล์ AAB ด้วย jarsigner (สำหรับอัปโหลดขึ้น Google Play Store)
+          FINAL_AAB="${BUILD_ID}.aab"
+          cp app/build/outputs/bundle/release/app-release.aab "$FINAL_AAB"
+          jarsigner -verbose -sigalg SHA256withRSA -digestalg SHA-256 \
+            -keystore release.jks \
+            -storepass "$KEYSTORE_PASSWORD" \
+            -keypass "$KEY_PASSWORD" \
+            "$FINAL_AAB" "$KEY_ALIAS"
+
           rm -f release.jks
 
-      - name: 7. Upload APK to GitHub Releases
+      - name: 7. Upload APK and AAB to GitHub Releases
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ inputs.build_id }}
@@ -134,4 +144,7 @@ jobs:
             - **App Name:** ${{ inputs.app_name }}
             - **URL:** ${{ inputs.app_url }}
             - **Package:** `${{ inputs.package_name }}`
-          files: ${{ inputs.build_id }}.apk
+            - **Files:** `.apk` (ติดตั้งตรง) และ `.aab` (สำหรับ Google Play Store)
+          files: |
+            ${{ inputs.build_id }}.apk
+            ${{ inputs.build_id }}.aab
