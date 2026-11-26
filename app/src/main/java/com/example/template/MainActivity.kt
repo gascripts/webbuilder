@@ -4,13 +4,18 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.DownloadManager
+import android.content.ContentValues
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.Environment
 import android.provider.MediaStore
+import android.util.Base64
 import android.webkit.CookieManager
+import android.webkit.JavascriptInterface
+import android.webkit.MimeTypeMap
 import android.webkit.PermissionRequest
 import android.webkit.URLUtil
 import android.webkit.ValueCallback
@@ -27,7 +32,9 @@ import androidx.core.content.FileProvider
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import org.json.JSONObject
 import java.io.File
+import java.io.FileOutputStream
 
 class MainActivity : AppCompatActivity() {
 
@@ -93,6 +100,9 @@ class MainActivity : AppCompatActivity() {
             mediaPlaybackRequiresUserGesture = false
         }
 
+        // ลงทะเบียน JavaScript Interface สำหรับรับไฟล์ Base64 จาก blob: / data:
+        webView.addJavascriptInterface(BlobDownloaderInterface(), "AndroidBlobDownloader")
+
         webView.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
                 return false
@@ -148,31 +158,40 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // รองรับการดาวน์โหลดไฟล์ (PDF, รูปภาพ, เอกสาร) ผ่าน DownloadManager
+        // รองรับการดาวน์โหลดทั้ง http/https, blob: และ data: URL
         webView.setDownloadListener { url, userAgent, contentDisposition, mimeType, _ ->
-            if (url.startsWith("http://") || url.startsWith("https://")) {
-                try {
-                    val fileName = URLUtil.guessFileName(url, contentDisposition, mimeType)
-                    val request = DownloadManager.Request(Uri.parse(url)).apply {
-                        setMimeType(mimeType)
-                        val cookies = CookieManager.getInstance().getCookie(url)
-                        if (!cookies.isNullOrEmpty()) {
-                            addRequestHeader("cookie", cookies)
-                        }
-                        addRequestHeader("User-Agent", userAgent)
-                        setTitle(fileName)
-                        setDescription("กำลังดาวน์โหลดไฟล์...")
-                        setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-                        setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName)
-                    }
-                    val dm = getSystemService(DOWNLOAD_SERVICE) as DownloadManager
-                    dm.enqueue(request)
-                    Toast.makeText(this@MainActivity, "กำลังดาวน์โหลด $fileName", Toast.LENGTH_SHORT).show()
-                } catch (e: Exception) {
-                    Toast.makeText(this@MainActivity, "ไม่สามารถดาวน์โหลดไฟล์ได้", Toast.LENGTH_SHORT).show()
+            when {
+                url.startsWith("http://") || url.startsWith("https://") -> {
+                    downloadHttpFile(url, userAgent, contentDisposition, mimeType)
                 }
-            } else {
-                Toast.makeText(this@MainActivity, "ไม่รองรับการดาวน์โหลดลิงก์รูปแบบนี้", Toast.LENGTH_SHORT).show()
+                url.startsWith("blob:") -> {
+                    val fileName = buildSafeFileName(url, contentDisposition, mimeType)
+                    val safeUrl = JSONObject.quote(url)
+                    val safeName = JSONObject.quote(fileName)
+                    val safeMime = JSONObject.quote(mimeType ?: "application/octet-stream")
+                    val js = """
+                        (function() {
+                            fetch($safeUrl)
+                                .then(res => res.blob())
+                                .then(blob => {
+                                    var reader = new FileReader();
+                                    reader.onloadend = function() {
+                                        AndroidBlobDownloader.saveBase64File(reader.result, $safeName, blob.type || $safeMime);
+                                    };
+                                    reader.readAsDataURL(blob);
+                                })
+                                .catch(err => AndroidBlobDownloader.onError(err.toString()));
+                        })();
+                    """.trimIndent()
+                    webView.evaluateJavascript(js, null)
+                }
+                url.startsWith("data:") -> {
+                    val fileName = buildSafeFileName(url, contentDisposition, mimeType)
+                    saveBase64ToDownloads(url, fileName, mimeType ?: "application/octet-stream")
+                }
+                else -> {
+                    Toast.makeText(this@MainActivity, "ไม่รองรับการดาวน์โหลดลิงก์รูปแบบนี้", Toast.LENGTH_SHORT).show()
+                }
             }
         }
 
@@ -183,6 +202,109 @@ class MainActivity : AppCompatActivity() {
                 if (webView.canGoBack()) webView.goBack() else finish()
             }
         })
+    }
+
+    // JavaScript Interface ที่เปิดให้หน้าเว็บเรียกส่งไฟล์ Base64 กลับมาบันทึก
+    inner class BlobDownloaderInterface {
+        @JavascriptInterface
+        fun saveBase64File(dataUrl: String, fileName: String, mimeType: String) {
+            saveBase64ToDownloads(dataUrl, fileName, mimeType)
+        }
+
+        @JavascriptInterface
+        fun onError(message: String) {
+            runOnUiThread {
+                Toast.makeText(this@MainActivity, "ดาวน์โหลดไม่สำเร็จ: $message", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun downloadHttpFile(url: String, userAgent: String, contentDisposition: String?, mimeType: String?) {
+        try {
+            val fileName = URLUtil.guessFileName(url, contentDisposition, mimeType)
+            val request = DownloadManager.Request(Uri.parse(url)).apply {
+                setMimeType(mimeType)
+                val cookies = CookieManager.getInstance().getCookie(url)
+                if (!cookies.isNullOrEmpty()) {
+                    addRequestHeader("cookie", cookies)
+                }
+                addRequestHeader("User-Agent", userAgent)
+                setTitle(fileName)
+                setDescription("กำลังดาวน์โหลดไฟล์...")
+                setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName)
+            }
+            val dm = getSystemService(DOWNLOAD_SERVICE) as DownloadManager
+            dm.enqueue(request)
+            Toast.makeText(this, "กำลังดาวน์โหลด $fileName", Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            Toast.makeText(this, "ไม่สามารถดาวน์โหลดไฟล์ได้", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun saveBase64ToDownloads(dataUrl: String, rawFileName: String, rawMimeType: String) {
+        try {
+            // แยก MIME type และเนื้อหา Base64 ออกจาก data:<mime>;base64,<data>
+            val headerMime = if (dataUrl.startsWith("data:") && dataUrl.contains(";")) {
+                dataUrl.substringAfter("data:").substringBefore(";")
+            } else {
+                rawMimeType
+            }
+            val mimeType = headerMime.ifBlank { "application/octet-stream" }
+            val base64Part = if (dataUrl.contains(",")) dataUrl.substringAfter(",") else dataUrl
+            val fileBytes = Base64.decode(base64Part, Base64.DEFAULT)
+
+            val fileName = ensureFileExtension(rawFileName, mimeType)
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val values = ContentValues().apply {
+                    put(MediaStore.Downloads.DISPLAY_NAME, fileName)
+                    put(MediaStore.Downloads.MIME_TYPE, mimeType)
+                    put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+                    put(MediaStore.Downloads.IS_PENDING, 1)
+                }
+                val uri = contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                    ?: throw IllegalStateException("ไม่สามารถสร้างไฟล์ใน Downloads ได้")
+
+                contentResolver.openOutputStream(uri)?.use { it.write(fileBytes) }
+
+                values.clear()
+                values.put(MediaStore.Downloads.IS_PENDING, 0)
+                contentResolver.update(uri, values, null, null)
+            } else {
+                val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                if (!downloadsDir.exists()) downloadsDir.mkdirs()
+                val outFile = File(downloadsDir, fileName)
+                FileOutputStream(outFile).use { it.write(fileBytes) }
+            }
+
+            runOnUiThread {
+                Toast.makeText(this, "บันทึก $fileName ลงโฟลเดอร์ Downloads แล้ว", Toast.LENGTH_LONG).show()
+            }
+        } catch (e: Exception) {
+            runOnUiThread {
+                Toast.makeText(this, "บันทึกไฟล์ไม่สำเร็จ: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun buildSafeFileName(url: String, contentDisposition: String?, mimeType: String?): String {
+        val guessed = URLUtil.guessFileName(url, contentDisposition, mimeType)
+        return if (guessed.isBlank() || guessed == "downloadfile.bin") {
+            "file_${System.currentTimeMillis()}"
+        } else {
+            guessed
+        }
+    }
+
+    private fun ensureFileExtension(fileName: String, mimeType: String): String {
+        if (fileName.contains(".") && !fileName.endsWith(".bin")) return fileName
+        val ext = MimeTypeMap.getSingleton().getExtensionFromMimeType(mimeType)
+        return if (!ext.isNullOrBlank()) {
+            "${fileName.substringBeforeLast(".")}.$ext"
+        } else {
+            fileName
+        }
     }
 
     private fun createCameraIntent(): Intent? {
