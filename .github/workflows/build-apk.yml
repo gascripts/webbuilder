@@ -41,7 +41,7 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: 3. Set up Gradle 8.7 (ไม่ต้องมีไฟล์ gradlew ใน Repo)
+      - name: 3. Set up Gradle 8.7
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.7'
@@ -61,7 +61,7 @@ jobs:
           package_name = os.environ['PACKAGE_NAME'].strip()
           icon_b64 = os.environ.get('ICON_BASE64', '').strip()
 
-          # แทนที่ app_name และ app_url
+          # 1) แทนที่ app_name และ app_url ใน strings.xml
           strings_path = 'app/src/main/res/values/strings.xml'
           with open(strings_path, 'r', encoding='utf-8') as f:
               content = f.read()
@@ -70,7 +70,7 @@ jobs:
           with open(strings_path, 'w', encoding='utf-8') as f:
               f.write(content)
 
-          # แทนที่ applicationId
+          # 2) แทนที่ applicationId ใน app/build.gradle
           gradle_path = 'app/build.gradle'
           with open(gradle_path, 'r', encoding='utf-8') as f:
               g_content = f.read()
@@ -78,8 +78,7 @@ jobs:
           with open(gradle_path, 'w', encoding='utf-8') as f:
               f.write(g_content)
 
-          # สร้างไฟล์ไอคอนลง mipmap
-
+          # 3) สร้างไฟล์ไอคอนลง mipmap (ตรวจสอบชนิดไฟล์ PNG/JPG อัตโนมัติ)
           if icon_b64:
               img_bytes = base64.b64decode(icon_b64)
               ext = 'png' if img_bytes.startswith(b'\x89PNG') else 'jpg'
@@ -100,14 +99,15 @@ jobs:
       - name: 5. Build Release APK
         run: gradle assembleRelease
 
-      - name: 6. Sign APK
+      - name: 6. Sign APK (ใช้ Keystore ถาวรจาก GitHub Secrets)
         env:
           BUILD_ID: ${{ inputs.build_id }}
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
-          keytool -genkey -v -keystore temp.keystore -alias appkey \
-            -keyalg RSA -keysize 2048 -validity 10000 \
-            -storepass 123456 -keypass 123456 \
-            -dname "CN=WebApp, OU=Dev, O=WebToApp, L=TH, S=TH, C=TH"
+          echo "$KEYSTORE_BASE64" | base64 --decode > release.jks
 
           APKSIGNER=$(find $ANDROID_HOME/build-tools -name "apksigner" | sort -V | tail -n 1)
           ZIPALIGN=$(find $ANDROID_HOME/build-tools -name "zipalign" | sort -V | tail -n 1)
@@ -117,8 +117,13 @@ jobs:
           FINAL_APK="${BUILD_ID}.apk"
 
           $ZIPALIGN -v -p 4 "$UNSIGNED_APK" "$ALIGNED_APK"
-          $APKSIGNER sign --ks temp.keystore --ks-pass pass:123456 --key-pass pass:123456 \
+          $APKSIGNER sign --ks release.jks \
+            --ks-key-alias "$KEY_ALIAS" \
+            --ks-pass "pass:$KEYSTORE_PASSWORD" \
+            --key-pass "pass:$KEY_PASSWORD" \
             --out "$FINAL_APK" "$ALIGNED_APK"
+
+          rm -f release.jks
 
       - name: 7. Upload APK to GitHub Releases
         uses: softprops/action-gh-release@v2
