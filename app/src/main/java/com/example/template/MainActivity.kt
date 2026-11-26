@@ -3,17 +3,22 @@ package com.example.template
 import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Activity
+import android.app.DownloadManager
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
+import android.os.Environment
 import android.provider.MediaStore
+import android.webkit.CookieManager
 import android.webkit.PermissionRequest
+import android.webkit.URLUtil
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -31,7 +36,6 @@ class MainActivity : AppCompatActivity() {
     private var cameraImageUri: Uri? = null
     private var pendingWebPermissionRequest: PermissionRequest? = null
 
-    // รับผลลัพธ์จากการเลือกไฟล์หรือถ่ายรูป
     private val fileChooserLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
@@ -57,7 +61,6 @@ class MainActivity : AppCompatActivity() {
         cameraImageUri = null
     }
 
-    // ขอสิทธิ์กล้องสำหรับ WebRTC (เช่น สแกน QR Code บนหน้าเว็บ)
     private val cameraPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { isGranted ->
@@ -97,7 +100,6 @@ class MainActivity : AppCompatActivity() {
         }
 
         webView.webChromeClient = object : WebChromeClient() {
-            // 1) รองรับ <input type="file"> (เลือกไฟล์ + ถ่ายรูปจากกล้อง)
             override fun onShowFileChooser(
                 webView: WebView?,
                 filePathCallback: ValueCallback<Array<Uri>>?,
@@ -131,7 +133,6 @@ class MainActivity : AppCompatActivity() {
                 return true
             }
 
-            // 2) รองรับการเปิดกล้องสดบนเว็บ (เช่น สแกน QR Code)
             override fun onPermissionRequest(request: PermissionRequest?) {
                 if (request == null) return
                 val hasCamera = ContextCompat.checkSelfPermission(
@@ -144,6 +145,34 @@ class MainActivity : AppCompatActivity() {
                     pendingWebPermissionRequest = request
                     cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
                 }
+            }
+        }
+
+        // รองรับการดาวน์โหลดไฟล์ (PDF, รูปภาพ, เอกสาร) ผ่าน DownloadManager
+        webView.setDownloadListener { url, userAgent, contentDisposition, mimeType, _ ->
+            if (url.startsWith("http://") || url.startsWith("https://")) {
+                try {
+                    val fileName = URLUtil.guessFileName(url, contentDisposition, mimeType)
+                    val request = DownloadManager.Request(Uri.parse(url)).apply {
+                        setMimeType(mimeType)
+                        val cookies = CookieManager.getInstance().getCookie(url)
+                        if (!cookies.isNullOrEmpty()) {
+                            addRequestHeader("cookie", cookies)
+                        }
+                        addRequestHeader("User-Agent", userAgent)
+                        setTitle(fileName)
+                        setDescription("กำลังดาวน์โหลดไฟล์...")
+                        setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                        setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName)
+                    }
+                    val dm = getSystemService(DOWNLOAD_SERVICE) as DownloadManager
+                    dm.enqueue(request)
+                    Toast.makeText(this@MainActivity, "กำลังดาวน์โหลด $fileName", Toast.LENGTH_SHORT).show()
+                } catch (e: Exception) {
+                    Toast.makeText(this@MainActivity, "ไม่สามารถดาวน์โหลดไฟล์ได้", Toast.LENGTH_SHORT).show()
+                }
+            } else {
+                Toast.makeText(this@MainActivity, "ไม่รองรับการดาวน์โหลดลิงก์รูปแบบนี้", Toast.LENGTH_SHORT).show()
             }
         }
 
