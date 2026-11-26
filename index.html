@@ -3,154 +3,282 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Web to App Generator (Android & iOS)</title>
+  <title>Web to App Generator (Android APK/AAB & iOS)</title>
+
+  <!-- PWA Configuration สำหรับ GitHub Pages -->
   <link rel="manifest" href="./manifest.json">
   <meta name="theme-color" content="#0f172a">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="apple-touch-icon" href="./icons/icon-192.png">
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js', { scope: './' })
-          .then((reg) => console.log('SW Registered:', reg.scope))
-          .catch((err) => console.error('SW Error:', err));
-      });
-    }
-  </script>
-</head>
-<body class="bg-slate-50 min-h-screen flex items-center justify-center p-4 font-sans">
 
-  <div class="bg-white max-w-lg w-full rounded-2xl shadow-lg p-6 md:p-8 border border-slate-100">
-    <h1 class="text-2xl font-bold text-slate-800 mb-1">Web to App Generator</h1>
-    <p class="text-sm text-slate-500 mb-6">แปลง URL เป็นแอปเต็มจอฟรี รองรับทั้ง Android APK และ iOS</p>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-100 text-slate-800 min-h-screen flex items-center justify-center p-4">
+
+  <div class="w-full max-w-lg bg-white rounded-2xl shadow-xl p-6 sm:p-8 border border-slate-200">
+    <div class="mb-5">
+      <h1 class="text-2xl font-bold text-slate-900">Web to App Generator</h1>
+      <p class="text-sm text-slate-500 mt-1">แปลงเว็บไซต์เป็นแอปเต็มจอ Android (.apk / .aab) และ iOS (.mobileconfig) ฟรี 100%</p>
+    </div>
+
+    <!-- ปุ่มติดตั้งแอป PWA (จะโผล่ขึ้นมาอัตโนมัติเมื่อเปิดผ่าน Chrome/Edge) -->
+    <button id="installPwaBtn" type="button"
+      class="hidden w-full mb-5 py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl shadow transition flex items-center justify-center gap-2">
+      <span>📲 ติดตั้งแอป Web2App ลงเครื่อง</span>
+    </button>
 
     <form id="appForm" class="space-y-4">
       <div>
-        <label class="block text-sm font-medium text-slate-700 mb-1">ชื่อแอปพลิเคชัน</label>
-        <input type="text" id="appName" required placeholder="เช่น ร้านค้าของฉัน"
-          class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+        <label class="block text-sm font-medium text-slate-700 mb-1">ชื่อแอปพลิเคชัน (App Name)</label>
+        <input type="text" id="appName" required placeholder="เช่น My Shop"
+          class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-slate-900 focus:border-slate-900 outline-none text-sm">
       </div>
 
       <div>
-        <label class="block text-sm font-medium text-slate-700 mb-1">URL เว็บไซต์ (ต้องมี https://)</label>
+        <label class="block text-sm font-medium text-slate-700 mb-1">ลิงก์เว็บไซต์ (Website URL)</label>
         <input type="url" id="appUrl" required placeholder="https://example.com"
-          class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+          class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-slate-900 focus:border-slate-900 outline-none text-sm">
       </div>
 
       <div>
-        <label class="block text-sm font-medium text-slate-700 mb-1">Package Name <span class="text-xs text-slate-400">(สำหรับ Android)</span></label>
-        <input type="text" id="packageName" value="com.myapp.webview"
-          class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm font-mono">
+        <label class="block text-sm font-medium text-slate-700 mb-1">Package Name (สำหรับ Android)</label>
+        <input type="text" id="packageName" required placeholder="com.myshop.app" pattern="^[a-z][a-z0-9_]*(\.[a-z0-9_]+)+$"
+          class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-slate-900 focus:border-slate-900 outline-none text-sm font-mono">
+        <p class="text-xs text-slate-400 mt-1">ตัวพิมพ์เล็กเท่านั้น เช่น com.company.appname</p>
       </div>
 
       <div>
-        <label class="block text-sm font-medium text-slate-700 mb-1">ไอคอนแอป (PNG / JPG)</label>
-        <div class="flex items-center gap-4">
-          <div id="iconPreview" class="w-16 h-16 rounded-2xl bg-slate-100 border border-slate-200 flex items-center justify-center overflow-hidden shrink-0">
-            <span class="text-xs text-slate-400">Preview</span>
-          </div>
-          <input type="file" id="appIcon" accept="image/png, image/jpeg" required
-            class="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100">
+        <label class="block text-sm font-medium text-slate-700 mb-1">ไอคอนแอป (ไม่บังคับ — PNG/JPG)</label>
+        <div class="flex items-center gap-3">
+          <img id="iconPreview" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23e2e8f0'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' fill='%2364748b' font-size='22' font-family='sans-serif'%3EAPP%3C/text%3E%3C/svg%3E"
+            alt="Icon Preview" class="w-14 h-14 rounded-xl object-cover border border-slate-200 bg-slate-50 shrink-0">
+          <input type="file" id="iconFile" accept="image/png, image/jpeg, image/webp"
+            class="block w-full text-xs text-slate-500 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-slate-900 file:text-white hover:file:bg-slate-700 cursor-pointer">
         </div>
       </div>
 
-      <div class="pt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <button type="button" onclick="handleBuild('android')"
-          class="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl shadow transition">
-          สร้าง Android (.apk)
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+        <button type="button" id="buildAndroidBtn"
+          class="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-semibold rounded-xl shadow transition text-sm">
+          สร้าง Android (.apk / .aab)
         </button>
-
-        <button type="button" onclick="handleBuild('ios')"
-          class="w-full py-3 px-4 bg-slate-900 hover:bg-slate-800 text-white font-semibold rounded-xl shadow transition">
+        <button type="button" id="buildIosBtn"
+          class="w-full py-3 px-4 bg-slate-900 hover:bg-slate-800 text-white font-semibold rounded-xl shadow transition text-sm">
           สร้าง iOS (.mobileconfig)
         </button>
       </div>
     </form>
 
-    <div id="statusBox" class="hidden mt-6 p-4 rounded-xl text-sm"></div>
+    <!-- กล่องแสดงสถานะและปุ่มดาวน์โหลด -->
+    <div id="statusBox" class="hidden mt-5 p-4 rounded-xl text-sm border"></div>
   </div>
 
   <script>
-    // นำ Web App URL จาก Google Apps Script มาใส่ตรงนี้
-    const PROXY_ENDPOINT = 'https://script.google.com/macros/s/AKfycbyNs0kOGYVckWiFefD7l61YW7e89mVxzhqfONncE5XeeNpDAf-T2JkFM5iRAvyix7-PBA/exec';
+    // =========================================================================
+    // ใส่ Web App URL จาก Google Apps Script ของคุณที่นี่
+    // =========================================================================
+    const PROXY_ENDPOINT = 'https://script.google.com/macros/s/YOUR_DEPLOY_ID/exec';
 
-    let iconBase64 = "";
+    let iconBase64 = '';
     let pollTimer = null;
 
-    // ย่อรูปเป็น 144x144 px (JPEG 0.85) เพื่อไม่ให้ขนาด Base64 เกินลิมิต 65KB ของ GitHub API
-    document.getElementById('appIcon').addEventListener('change', function (e) {
+    // 1. ระบบปุ่มติดตั้งแอป PWA
+    let deferredPrompt = null;
+    const installBtn = document.getElementById('installPwaBtn');
+
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredPrompt = e;
+      installBtn.classList.remove('hidden');
+    });
+
+    installBtn.addEventListener('click', async () => {
+      if (!deferredPrompt) return;
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      if (outcome === 'accepted') {
+        installBtn.classList.add('hidden');
+      }
+      deferredPrompt = null;
+    });
+
+    window.addEventListener('appinstalled', () => {
+      installBtn.classList.add('hidden');
+      deferredPrompt = null;
+    });
+
+    // 2. อัปโหลดและย่อขนาดไอคอน (192x192 JPEG เพื่อไม่ให้เกินลิมิต GitHub API)
+    document.getElementById('iconFile').addEventListener('change', (e) => {
       const file = e.target.files[0];
       if (!file) return;
 
       const reader = new FileReader();
-      reader.onload = function (event) {
+      reader.onload = (ev) => {
         const img = new Image();
-        img.onload = function () {
+        img.onload = () => {
           const canvas = document.createElement('canvas');
-          canvas.width = 144;
-          canvas.height = 144;
+          canvas.width = 192;
+          canvas.height = 192;
           const ctx = canvas.getContext('2d');
-          ctx.fillStyle = '#FFFFFF';
-          ctx.fillRect(0, 0, 144, 144);
-          ctx.drawImage(img, 0, 0, 144, 144);
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, 192, 192);
+          ctx.drawImage(img, 0, 0, 192, 192);
 
           const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+          document.getElementById('iconPreview').src = dataUrl;
           iconBase64 = dataUrl.split(',')[1];
-
-          document.getElementById('iconPreview').innerHTML =
-            `<img src="${dataUrl}" class="w-full h-full object-cover" alt="Icon Preview">`;
         };
-        img.src = event.target.result;
+        img.src = ev.target.result;
       };
       reader.readAsDataURL(file);
     });
 
-    function showStatus(message, type = 'info') {
+    // ช่วยสร้าง Package Name อัตโนมัติจากชื่อแอป (ถ้ายังไม่ได้กรอก)
+    document.getElementById('appName').addEventListener('blur', () => {
+      const pkgInput = document.getElementById('packageName');
+      if (!pkgInput.value.trim()) {
+        const slug = document.getElementById('appName').value
+          .toLowerCase()
+          .replace(/[^a-z0-9]/g, '') || 'myapp';
+        pkgInput.value = `com.web2app.${slug}`;
+      }
+    });
+
+    // แสดงกล่องสถานะ
+    function showStatus(html, type = 'info') {
       const box = document.getElementById('statusBox');
-      box.classList.remove('hidden', 'bg-blue-50', 'text-blue-700', 'bg-emerald-50', 'text-emerald-700', 'bg-red-50', 'text-red-700');
-      if (type === 'success') box.classList.add('bg-emerald-50', 'text-emerald-700');
-      else if (type === 'error') box.classList.add('bg-red-50', 'text-red-700');
-      else box.classList.add('bg-blue-50', 'text-blue-700');
-      box.innerHTML = message;
+      const styles = {
+        info: 'bg-blue-50 border-blue-200 text-blue-800',
+        success: 'bg-emerald-50 border-emerald-200 text-emerald-900',
+        error: 'bg-red-50 border-red-200 text-red-800'
+      };
+      box.className = `mt-5 p-4 rounded-xl text-sm border ${styles[type] || styles.info}`;
+      box.innerHTML = html;
+      box.classList.remove('hidden');
     }
 
-    function generateUUID() {
-      return crypto.randomUUID ? crypto.randomUUID().toUpperCase() : 'XXXXXXXX-XXXX-4XXX-YXXX-XXXXXXXXXXXX'.replace(/[XY]/g, c => {
-        const r = Math.random() * 16 | 0;
-        return (c === 'X' ? r : (r & 0x3 | 0x8)).toString(16).toUpperCase();
-      });
+    function getFormData() {
+      const form = document.getElementById('appForm');
+      if (!form.reportValidity()) return null;
+      return {
+        app_name: document.getElementById('appName').value.trim(),
+        app_url: document.getElementById('appUrl').value.trim(),
+        package_name: document.getElementById('packageName').value.trim()
+      };
     }
 
-    function escapeXml(unsafe) {
-      return unsafe.replace(/[<>&'"]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', "'": '&apos;', '"': '&quot;' }[c]));
-    }
+    // 3. ปุ่มสร้าง Android (.apk & .aab)
+    document.getElementById('buildAndroidBtn').addEventListener('click', async () => {
+      const payload = getFormData();
+      if (!payload) return;
 
-    async function handleBuild(platform) {
-      const appName = document.getElementById('appName').value.trim();
-      const appUrl = document.getElementById('appUrl').value.trim();
-      const packageName = document.getElementById('packageName').value.trim();
+      const btn = document.getElementById('buildAndroidBtn');
+      btn.disabled = true;
+      if (pollTimer) clearInterval(pollTimer);
 
-      if (!appName || !appUrl || !iconBase64) {
-        showStatus('กรุณากรอกชื่อแอป, URL และอัปโหลดรูปไอคอนให้ครบถ้วนครับ', 'error');
-        return;
+      const buildId = 'build-' + Date.now();
+      showStatus('กำลังส่งคำสั่งสร้างแอปไปยัง GitHub Actions...', 'info');
+
+      try {
+        const res = await fetch(PROXY_ENDPOINT, {
+          method: 'POST',
+          body: JSON.stringify({
+            build_id: buildId,
+            app_name: payload.app_name,
+            app_url: payload.app_url,
+            package_name: payload.package_name,
+            icon_base64: iconBase64
+          })
+        });
+        const data = await res.json();
+
+        if (data.status === 'ok' || data.status === 'queued') {
+          startPollingRelease(buildId, btn);
+        } else {
+          showStatus(`เกิดข้อผิดพลาด: ${data.message || 'ไม่สามารถเริ่ม Build ได้'}`, 'error');
+          btn.disabled = false;
+        }
+      } catch (err) {
+        showStatus(`เชื่อมต่อเซิร์ฟเวอร์ไม่สำเร็จ: ${err.message}`, 'error');
+        btn.disabled = false;
       }
+    });
 
-      if (platform === 'ios') {
-        buildIOSMobileConfig(appName, appUrl, iconBase64);
-      } else {
-        await triggerAndroidBuild(appName, appUrl, packageName, iconBase64);
-      }
+    // 4. เช็กสถานะ Release ทุก 6 วินาที (แสดงปุ่มโหลดทั้ง .apk และ .aab)
+    function startPollingRelease(buildId, btn) {
+      const startTime = Date.now();
+      const maxWaitMs = 6 * 60 * 1000; // รอสูงสุด 6 นาที
+
+      pollTimer = setInterval(async () => {
+        const elapsedSec = Math.floor((Date.now() - startTime) / 1000);
+
+        if (Date.now() - startTime > maxWaitMs) {
+          clearInterval(pollTimer);
+          btn.disabled = false;
+          showStatus('ใช้เวลานานกว่าปกติ กรุณาตรวจสอบสถานะในแท็บ Actions ของ GitHub Repository', 'error');
+          return;
+        }
+
+        showStatus(`กำลังคอมไพล์และเซ็นชื่อไฟล์ Android (.apk & .aab)... (${elapsedSec} วินาที)`, 'info');
+
+        try {
+          const res = await fetch(`${PROXY_ENDPOINT}?build_id=${encodeURIComponent(buildId)}`);
+          const data = await res.json();
+
+          if (data.status === 'ready' && data.apk) {
+            clearInterval(pollTimer);
+            btn.disabled = false;
+
+            const apkSize = (data.apk.size / (1024 * 1024)).toFixed(2);
+            const aabBtnHtml = data.aab
+              ? `<a href="${data.aab.download_url}"
+                   class="inline-flex items-center justify-center w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg shadow transition text-center">
+                   ดาวน์โหลด .AAB (Play Store) — ${(data.aab.size / (1024 * 1024)).toFixed(2)} MB
+                 </a>`
+              : '';
+
+            showStatus(`
+              <div class="space-y-3">
+                <div>
+                  <strong>สร้างไฟล์ Android สำเร็จ!</strong>
+                  <p class="text-xs mt-1">ใช้เวลา ${elapsedSec} วินาที</p>
+                </div>
+                <div class="space-y-2">
+                  <a href="${data.apk.download_url}"
+                    class="inline-flex items-center justify-center w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-lg shadow transition text-center">
+                    ดาวน์โหลด .APK (ติดตั้งตรง) — ${apkSize} MB
+                  </a>
+                  ${aabBtnHtml}
+                </div>
+                <p class="text-xs text-slate-500">* ลิงก์ชั่วคราวมีอายุประมาณ 1-2 นาที</p>
+              </div>
+            `, 'success');
+          } else if (data.status === 'error') {
+            clearInterval(pollTimer);
+            btn.disabled = false;
+            showStatus(`เกิดข้อผิดพลาด: ${data.message}`, 'error');
+          }
+        } catch (err) {
+          // ข้าม error ชั่วคราวระหว่าง poll
+        }
+      }, 6000);
     }
 
-    function buildIOSMobileConfig(name, url, base64Icon) {
-      const uuid1 = generateUUID();
-      const uuid2 = generateUUID();
-      const safeName = escapeXml(name);
-      const safeUrl = escapeXml(url);
+    // 5. ปุ่มสร้าง iOS (.mobileconfig Web Clip ฝั่ง Client-side ทันที)
+    document.getElementById('buildIosBtn').addEventListener('click', () => {
+      const payload = getFormData();
+      if (!payload) return;
 
-      const xmlContent = `<?xml version="1.0" encoding="UTF-8"?>
+      const uuid1 = crypto.randomUUID ? crypto.randomUUID().toUpperCase() : 'UUID-1-' + Date.now();
+      const uuid2 = crypto.randomUUID ? crypto.randomUUID().toUpperCase() : 'UUID-2-' + Date.now();
+      const escXml = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+      const iconXml = iconBase64
+        ? `<key>Icon</key><data>${iconBase64}</data>`
+        : '';
+
+      const mobileconfig = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
@@ -159,18 +287,17 @@
     <dict>
       <key>FullScreen</key>
       <true/>
-      <key>Icon</key>
-      <data>${base64Icon}</data>
+      ${iconXml}
       <key>IsRemovable</key>
       <true/>
       <key>Label</key>
-      <string>${safeName}</string>
+      <string>${escXml(payload.app_name)}</string>
       <key>PayloadDescription</key>
-      <string>Web Clip for ${safeName}</string>
+      <string>Web Clip for ${escXml(payload.app_name)}</string>
       <key>PayloadDisplayName</key>
-      <string>${safeName}</string>
+      <string>${escXml(payload.app_name)}</string>
       <key>PayloadIdentifier</key>
-      <string>com.webclip.${uuid1}</string>
+      <string>${escXml(payload.package_name)}.webclip</string>
       <key>PayloadType</key>
       <string>com.apple.webClip.managed</string>
       <key>PayloadUUID</key>
@@ -180,13 +307,13 @@
       <key>Precomposed</key>
       <true/>
       <key>URL</key>
-      <string>${safeUrl}</string>
+      <string>${escXml(payload.app_url)}</string>
     </dict>
   </array>
   <key>PayloadDisplayName</key>
-  <string>${safeName}</string>
+  <string>${escXml(payload.app_name)}</string>
   <key>PayloadIdentifier</key>
-  <string>com.profile.${uuid2}</string>
+  <string>${escXml(payload.package_name)}.profile</string>
   <key>PayloadRemovalDisallowed</key>
   <false/>
   <key>PayloadType</key>
@@ -198,102 +325,29 @@
 </dict>
 </plist>`;
 
-      const blob = new Blob([xmlContent], { type: 'application/x-apple-aspen-config' });
-      const downloadUrl = URL.createObjectURL(blob);
+      const blob = new Blob([mobileconfig], { type: 'application/x-apple-aspen-config' });
+      const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
-      a.href = downloadUrl;
-      a.download = `${name.replace(/\s+/g, '_')}.mobileconfig`;
+      a.href = url;
+      a.download = `${payload.app_name.replace(/\s+/g, '_')}.mobileconfig`;
       document.body.appendChild(a);
       a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(downloadUrl);
+      a.remove();
+      URL.revokeObjectURL(url);
 
-      showStatus('<strong>สร้างไฟล์ iOS สำเร็จ!</strong><br>บน iPhone: ไปที่ <em>การตั้งค่า (Settings) → ดาวน์โหลดโปรไฟล์แล้ว → กดติดตั้ง</em> ไอคอนแอปเต็มจอจะไปปรากฏที่หน้าจอโฮมทันที', 'success');
-    }
+      showStatus(`
+        <strong>สร้างไฟล์ iOS (.mobileconfig) สำเร็จ!</strong>
+        <p class="text-xs mt-1">บน iPhone/iPad: เปิดไฟล์ด้วย Safari → ไปที่ การตั้งค่า (Settings) → โปรไฟล์ที่ดาวน์โหลดแล้ว → กดติดตั้ง</p>
+      `, 'success');
+    });
 
-    async function triggerAndroidBuild(name, url, pkg, base64Icon) {
-      if (pollTimer) clearInterval(pollTimer);
-      showStatus('กำลังส่งคำสั่งสร้างไฟล์ Android APK...', 'info');
-
-      try {
-        const res = await fetch(PROXY_ENDPOINT, {
-          method: 'POST',
-          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: JSON.stringify({
-            app_name: name,
-            app_url: url,
-            package_name: pkg,
-            icon_base64: base64Icon
-          })
-        });
-
-        const data = await res.json();
-        if (data.status !== 'success') throw new Error(data.message || 'ไม่สามารถเริ่ม Build ได้');
-
-        startPollingRelease(data.build_id, name);
-      } catch (err) {
-        showStatus(`<strong>เกิดข้อผิดพลาด:</strong> ${err.message}`, 'error');
-      }
-    }
-
-    function startPollingRelease(buildId, appName) {
-      const startTime = Date.now();
-      const maxAttempts = 36;
-      let attempts = 0;
-
-      const renderProgress = (percent, elapsedSec) => {
-        showStatus(`
-          <div class="space-y-2">
-            <div class="flex justify-between items-center font-medium">
-              <span>กำลังคอมไพล์แอป <strong>${escapeXml(appName)}</strong>...</span>
-              <span class="text-xs font-mono">${elapsedSec} วิ</span>
-            </div>
-            <div class="w-full bg-blue-200 rounded-full h-2.5 overflow-hidden">
-              <div class="bg-blue-600 h-2.5 rounded-full transition-all duration-500" style="width: ${percent}%"></div>
-            </div>
-            <p class="text-xs text-blue-600">รหัสงาน: <code>${buildId}</code> (ใช้เวลาประมาณ 2-4 นาที)</p>
-          </div>
-        `, 'info');
-      };
-
-      renderProgress(10, 0);
-
-      pollTimer = setInterval(async () => {
-        attempts++;
-        const elapsedSec = Math.floor((Date.now() - startTime) / 1000);
-        const fakeProgress = Math.min(90, 10 + Math.floor((elapsedSec / 180) * 80));
-        renderProgress(fakeProgress, elapsedSec);
-
-        try {
-          const checkUrl = `${PROXY_ENDPOINT}?build_id=${encodeURIComponent(buildId)}`;
-          const res = await fetch(checkUrl);
-          const data = await res.json();
-
-          if (data.status === 'ready' && data.download_url) {
-            clearInterval(pollTimer);
-            const sizeMB = (data.size / (1024 * 1024)).toFixed(2);
-            showStatus(`
-              <div class="space-y-3">
-                <div>
-                  <strong>สร้างไฟล์ Android APK สำเร็จ!</strong>
-                  <p class="text-xs mt-1">ขนาดไฟล์: ${sizeMB} MB | ใช้เวลา ${elapsedSec} วินาที</p>
-                </div>
-                <a href="${data.download_url}"
-                  class="inline-flex items-center justify-center w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-lg shadow transition">
-                  ดาวน์โหลด ${escapeXml(data.name)}
-                </a>
-                <p class="text-xs text-slate-500">* ลิงก์ชั่วคราวมีอายุประมาณ 1-2 นาที</p>
-              </div>
-            `, 'success');
-            return;
-          }
-        } catch (e) {}
-
-        if (attempts >= maxAttempts) {
-          clearInterval(pollTimer);
-          showStatus('<strong>ใช้เวลานานกว่าปกติ</strong> กรุณาตรวจสอบสถานะในแท็บ Actions ของ GitHub Repository', 'error');
-        }
-      }, 10000);
+    // 6. ลงทะเบียน Service Worker สำหรับ PWA
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js', { scope: './' })
+          .then((reg) => console.log('SW Registered:', reg.scope))
+          .catch((err) => console.error('SW Error:', err));
+      });
     }
   </script>
 </body>
