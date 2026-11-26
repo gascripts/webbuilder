@@ -11,6 +11,8 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
+import android.os.Handler
+import android.os.Looper
 import android.provider.MediaStore
 import android.util.Base64
 import android.view.ViewGroup
@@ -31,6 +33,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -43,10 +46,13 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var swipeRefresh: SwipeRefreshLayout
     private lateinit var webView: WebView
+    private var isFirstPageLoaded = false
+    private var backPressedTime: Long = 0L
     private var filePathCallback: ValueCallback<Array<Uri>>? = null
     private var cameraImageUri: Uri? = null
     private var pendingWebPermissionRequest: PermissionRequest? = null
 
+    // รับผลลัพธ์จากการเลือกไฟล์หรือถ่ายรูป
     private val fileChooserLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
@@ -72,6 +78,7 @@ class MainActivity : AppCompatActivity() {
         cameraImageUri = null
     }
 
+    // ขอสิทธิ์กล้องสำหรับ WebRTC (เช่น สแกน QR Code บนหน้าเว็บ)
     private val cameraPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { isGranted ->
@@ -86,11 +93,19 @@ class MainActivity : AppCompatActivity() {
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
+        // 1) ติดตั้ง Splash Screen (ต้องอยู่ก่อน super.onCreate)
+        val splashScreen = installSplashScreen()
         super.onCreate(savedInstanceState)
+
+        // ค้างหน้า Splash Screen จนกว่าเว็บจะโหลดเสร็จ (หรือสูงสุด 2.5 วินาที)
+        splashScreen.setKeepOnScreenCondition { !isFirstPageLoaded }
+        Handler(Looper.getMainLooper()).postDelayed({
+            isFirstPageLoaded = true
+        }, 2500)
 
         enableFullScreen()
 
-        // สร้าง SwipeRefreshLayout ครอบ WebView
+        // 2) สร้าง SwipeRefreshLayout ครอบ WebView
         swipeRefresh = SwipeRefreshLayout(this).apply {
             layoutParams = ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -116,6 +131,7 @@ class MainActivity : AppCompatActivity() {
             webView.scrollY > 0
         }
 
+        // 3) ตั้งค่า WebView
         webView.settings.apply {
             javaScriptEnabled = true
             domStorageEnabled = true
@@ -127,13 +143,16 @@ class MainActivity : AppCompatActivity() {
             mediaPlaybackRequiresUserGesture = false
         }
 
+        // ลงทะเบียน JavaScript Interface สำหรับรับไฟล์ Base64 จาก blob: / data:
         webView.addJavascriptInterface(BlobDownloaderInterface(), "AndroidBlobDownloader")
 
+        // 4) จัดการลิงก์ภายนอก + ปิด Splash Screen และตัวหมุนรีเฟรช
         webView.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
                 val uri = request?.url ?: return false
                 val url = uri.toString()
 
+                // รองรับ intent://
                 if (url.startsWith("intent://")) {
                     return try {
                         val intent = Intent.parseUri(url, Intent.URI_INTENT_SCHEME)
@@ -151,12 +170,14 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
 
+                // ลิงก์โทรศัพท์, อีเมล, SMS, แผนที่ (geo:) และ LINE scheme
                 val isExternalScheme = url.startsWith("tel:") ||
                     url.startsWith("mailto:") ||
                     url.startsWith("sms:") ||
                     url.startsWith("geo:") ||
                     url.startsWith("line:")
 
+                // ลิงก์เว็บของ LINE และ Google Maps
                 val isExternalAppLink = url.startsWith("https://line.me/") ||
                     url.startsWith("https://lin.ee/") ||
                     url.startsWith("https://maps.google.com/") ||
@@ -171,13 +192,12 @@ class MainActivity : AppCompatActivity() {
                 return false
             }
 
-            // หยุดตัวหมุนรีเฟรชเมื่อโหลดหน้าเว็บเสร็จ
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
+                isFirstPageLoaded = true
                 swipeRefresh.isRefreshing = false
             }
 
-            // หยุดตัวหมุนรีเฟรชหากโหลดไม่สำเร็จ
             override fun onReceivedError(
                 view: WebView?,
                 request: WebResourceRequest?,
@@ -185,11 +205,13 @@ class MainActivity : AppCompatActivity() {
             ) {
                 super.onReceivedError(view, request, error)
                 if (request?.isForMainFrame == true) {
+                    isFirstPageLoaded = true
                     swipeRefresh.isRefreshing = false
                 }
             }
         }
 
+        // 5) จัดการเลือกไฟล์, ถ่ายรูป และสิทธิ์กล้องสด (WebRTC)
         webView.webChromeClient = object : WebChromeClient() {
             override fun onShowFileChooser(
                 webView: WebView?,
@@ -239,6 +261,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        // 6) จัดการดาวน์โหลดไฟล์ทั้ง http/https, blob: และ data: URL
         webView.setDownloadListener { url, userAgent, contentDisposition, mimeType, _ ->
             when {
                 url.startsWith("http://") || url.startsWith("https://") -> {
@@ -277,9 +300,24 @@ class MainActivity : AppCompatActivity() {
 
         webView.loadUrl(getString(R.string.app_url))
 
+        // 7) กดปุ่ม Back เพื่อย้อนหน้าเว็บ หรือกด 2 ครั้งภายใน 2 วินาทีเพื่อออกจากแอป
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
-                if (webView.canGoBack()) webView.goBack() else finish()
+                if (webView.canGoBack()) {
+                    webView.goBack()
+                } else {
+                    val currentTime = System.currentTimeMillis()
+                    if (currentTime - backPressedTime < 2000) {
+                        finish()
+                    } else {
+                        backPressedTime = currentTime
+                        Toast.makeText(
+                            this@MainActivity,
+                            "กดปุ่มย้อนกลับอีกครั้งเพื่อออกจากแอป",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                }
             }
         })
     }
