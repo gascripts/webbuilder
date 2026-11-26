@@ -1,6 +1,17 @@
 <resources>
-    <style name="Theme.MyWebApp" parent="Theme.MaterialComponents.DayNight.NoActionBar">
-        <item name="android:windowFullscreen">true</item>
-        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
+    <!-- ธีมหลักของแอป (คงของเดิมไว้) -->
+    <style name="Theme.MyWebApp" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
+
+    <!-- ธีม Splash Screen ตอนเปิดแอป -->
+    <style name="Theme.MyWebApp.Starting" parent="Theme.SplashScreen">
+        <!-- สีพื้นหลังหน้าจอโลโก้ (เปลี่ยนรหัสสีได้ตามต้องการ) -->
+        <item name="windowSplashScreenBackground">#FFFFFF</item>
+        <!-- ดึงไอคอนแอปที่ Build มาแสดงตรงกลางอัตโนมัติ -->
+        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
+        <!-- ธีมที่จะสลับไปใช้หลังจาก Splash Screen ปิดลง -->
+        <item name="postSplashScreenTheme">@style/Theme.MyWebApp</item>
     </style>
 </resources>
