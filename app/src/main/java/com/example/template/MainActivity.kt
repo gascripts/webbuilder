@@ -13,6 +13,7 @@ import android.os.Bundle
 import android.os.Environment
 import android.provider.MediaStore
 import android.util.Base64
+import android.view.ViewGroup
 import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
 import android.webkit.MimeTypeMap
@@ -20,6 +21,7 @@ import android.webkit.PermissionRequest
 import android.webkit.URLUtil
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
+import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -32,12 +34,14 @@ import androidx.core.content.FileProvider
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
 
 class MainActivity : AppCompatActivity() {
 
+    private lateinit var swipeRefresh: SwipeRefreshLayout
     private lateinit var webView: WebView
     private var filePathCallback: ValueCallback<Array<Uri>>? = null
     private var cameraImageUri: Uri? = null
@@ -86,8 +90,31 @@ class MainActivity : AppCompatActivity() {
 
         enableFullScreen()
 
-        webView = WebView(this)
-        setContentView(webView)
+        // สร้าง SwipeRefreshLayout ครอบ WebView
+        swipeRefresh = SwipeRefreshLayout(this).apply {
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        }
+
+        webView = WebView(this).apply {
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        }
+
+        swipeRefresh.addView(webView)
+        setContentView(swipeRefresh)
+
+        // ลากลงเพื่อรีเฟรช (ทำงานเฉพาะตอนอยู่บนสุดของหน้าเว็บ)
+        swipeRefresh.setOnRefreshListener {
+            webView.reload()
+        }
+        swipeRefresh.setOnChildScrollUpCallback { _, _ ->
+            webView.scrollY > 0
+        }
 
         webView.settings.apply {
             javaScriptEnabled = true
@@ -100,12 +127,66 @@ class MainActivity : AppCompatActivity() {
             mediaPlaybackRequiresUserGesture = false
         }
 
-        // ลงทะเบียน JavaScript Interface สำหรับรับไฟล์ Base64 จาก blob: / data:
         webView.addJavascriptInterface(BlobDownloaderInterface(), "AndroidBlobDownloader")
 
         webView.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
+                val uri = request?.url ?: return false
+                val url = uri.toString()
+
+                if (url.startsWith("intent://")) {
+                    return try {
+                        val intent = Intent.parseUri(url, Intent.URI_INTENT_SCHEME)
+                        if (intent.resolveActivity(packageManager) != null) {
+                            startActivity(intent)
+                        } else {
+                            val fallbackUrl = intent.getStringExtra("browser_fallback_url")
+                            if (!fallbackUrl.isNullOrEmpty()) {
+                                view?.loadUrl(fallbackUrl)
+                            }
+                        }
+                        true
+                    } catch (e: Exception) {
+                        true
+                    }
+                }
+
+                val isExternalScheme = url.startsWith("tel:") ||
+                    url.startsWith("mailto:") ||
+                    url.startsWith("sms:") ||
+                    url.startsWith("geo:") ||
+                    url.startsWith("line:")
+
+                val isExternalAppLink = url.startsWith("https://line.me/") ||
+                    url.startsWith("https://lin.ee/") ||
+                    url.startsWith("https://maps.google.com/") ||
+                    url.startsWith("https://www.google.com/maps") ||
+                    url.startsWith("https://maps.app.goo.gl/") ||
+                    url.startsWith("https://goo.gl/maps/")
+
+                if (isExternalScheme || isExternalAppLink) {
+                    return openExternalApp(uri)
+                }
+
                 return false
+            }
+
+            // หยุดตัวหมุนรีเฟรชเมื่อโหลดหน้าเว็บเสร็จ
+            override fun onPageFinished(view: WebView?, url: String?) {
+                super.onPageFinished(view, url)
+                swipeRefresh.isRefreshing = false
+            }
+
+            // หยุดตัวหมุนรีเฟรชหากโหลดไม่สำเร็จ
+            override fun onReceivedError(
+                view: WebView?,
+                request: WebResourceRequest?,
+                error: WebResourceError?
+            ) {
+                super.onReceivedError(view, request, error)
+                if (request?.isForMainFrame == true) {
+                    swipeRefresh.isRefreshing = false
+                }
             }
         }
 
@@ -158,7 +239,6 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // รองรับการดาวน์โหลดทั้ง http/https, blob: และ data: URL
         webView.setDownloadListener { url, userAgent, contentDisposition, mimeType, _ ->
             when {
                 url.startsWith("http://") || url.startsWith("https://") -> {
@@ -204,7 +284,6 @@ class MainActivity : AppCompatActivity() {
         })
     }
 
-    // JavaScript Interface ที่เปิดให้หน้าเว็บเรียกส่งไฟล์ Base64 กลับมาบันทึก
     inner class BlobDownloaderInterface {
         @JavascriptInterface
         fun saveBase64File(dataUrl: String, fileName: String, mimeType: String) {
@@ -244,7 +323,6 @@ class MainActivity : AppCompatActivity() {
 
     private fun saveBase64ToDownloads(dataUrl: String, rawFileName: String, rawMimeType: String) {
         try {
-            // แยก MIME type และเนื้อหา Base64 ออกจาก data:<mime>;base64,<data>
             val headerMime = if (dataUrl.startsWith("data:") && dataUrl.contains(";")) {
                 dataUrl.substringAfter("data:").substringBefore(";")
             } else {
@@ -304,6 +382,19 @@ class MainActivity : AppCompatActivity() {
             "${fileName.substringBeforeLast(".")}.$ext"
         } else {
             fileName
+        }
+    }
+
+    private fun openExternalApp(uri: Uri): Boolean {
+        return try {
+            val intent = Intent(Intent.ACTION_VIEW, uri).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            startActivity(intent)
+            true
+        } catch (e: Exception) {
+            Toast.makeText(this, "ไม่พบแอปที่รองรับลิงก์นี้ในเครื่อง", Toast.LENGTH_SHORT).show()
+            true
         }
     }
 
